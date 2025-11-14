@@ -46,47 +46,40 @@ until /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -C -Q "
     sleep 5
 done
 
-echo "Checking if $DB_NAME database exists..."
-if ! /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -C \
-  -Q "SET NOCOUNT ON; SELECT name FROM sys.databases WHERE name = '$DB_NAME';" \
-  -h -1 | tr -d '[:space:]' | grep -q "^$DB_NAME$"; then
-    echo "Database $DB_NAME not found. Running initialization..."
-    DB_FILE_NAME=$(echo "${DB_NAME}_data" | sed 's/[^a-zA-Z0-9]/_/g' | tr '[:upper:]' '[:lower:]')
-    LOG_FILE_NAME=$(echo "${DB_NAME}_log" | sed 's/[^a-zA-Z0-9]/_/g' | tr '[:upper:]' '[:lower:]')
+DB_FILE_NAME=$(echo "${DB_NAME}_data" | sed 's/[^a-zA-Z0-9]/_/g' | tr '[:upper:]' '[:lower:]')
+LOG_FILE_NAME=$(echo "${DB_NAME}_log" | sed 's/[^a-zA-Z0-9]/_/g' | tr '[:upper:]' '[:lower:]')
 
-    sed -e "s/@DB_NAME/$DB_NAME/g" \
-        -e "s/@DB_FILE_NAME/$DB_FILE_NAME/g" \
-        -e "s/@LOG_FILE_NAME/$LOG_FILE_NAME/g" \
-        -e "s/@MSSQL_COLLATION/$MSSQL_COLLATION/g" \
-        -e "s/@DB_CHANGE_TRACKING_PERIOD_DAYS/$DB_CHANGE_TRACKING_PERIOD_DAYS/g" \
-        /start-up/init.sql > /start-up/final_init.sql
+sed -e "s/@DB_NAME/$DB_NAME/g" \
+    -e "s/@DB_FILE_NAME/$DB_FILE_NAME/g" \
+    -e "s/@LOG_FILE_NAME/$LOG_FILE_NAME/g" \
+    -e "s/@MSSQL_COLLATION/$MSSQL_COLLATION/g" \
+    -e "s/@DB_CHANGE_TRACKING_PERIOD_DAYS/$DB_CHANGE_TRACKING_PERIOD_DAYS/g" \
+    /start-up/init.sql > /start-up/final_init.sql
+
+MAX_RETRIES=3
+RETRY_COUNT=0
+while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+    RETRY_COUNT=$((RETRY_COUNT + 1))
+    echo "Attempt $RETRY_COUNT of $MAX_RETRIES: Running initialization script..."
     
-    # Retry logic for SQL initialization
-    MAX_RETRIES=3
-    RETRY_COUNT=0
-    while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-        RETRY_COUNT=$((RETRY_COUNT + 1))
-        echo "Attempt $RETRY_COUNT of $MAX_RETRIES: Running initialization script..."
+    if INIT_OUTPUT=$(/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -C -i /start-up/final_init.sql -b 2>&1); then
+        echo "$DB_NAME initialization completed successfully"
+        break
+    else
+        echo "Attempt $RETRY_COUNT failed. SQL Error Output:"
+        echo "$INIT_OUTPUT"
         
-        if INIT_OUTPUT=$(/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -C -i /start-up/final_init.sql -b 2>&1); then
-            echo "$DB_NAME initialization completed successfully"
-            break
+        if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+            echo "Retrying in 1 second..."
+            sleep 1
         else
-            echo "Attempt $RETRY_COUNT failed. SQL Error Output:"
-            echo "$INIT_OUTPUT"
-            
-            if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
-                echo "Retrying in 1 second..."
-                sleep 1
-            else
-                echo "ERROR: Failed to execute init script after $MAX_RETRIES attempts"
-                echo "Last 20 lines of SQL Server errorlog:"
-                tail -n 20 /var/opt/mssql/log/errorlog || true
-                exit 1
-            fi
+            echo "ERROR: Failed to execute init script after $MAX_RETRIES attempts"
+            echo "Last 20 lines of SQL Server errorlog:"
+            tail -n 20 /var/opt/mssql/log/errorlog || true
+            exit 1
         fi
-    done
-fi
+    fi
+done
 
 echo "Waiting for $DB_NAME db to be up..."
 until /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -C -Q "SELECT CASE WHEN DB_ID('$DB_NAME') IS NOT NULL THEN 1 ELSE 0 END;" -b | grep -q 1; do

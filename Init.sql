@@ -16,6 +16,10 @@ BEGIN
         FILEGROWTH = 128MB
     )
     COLLATE @MSSQL_COLLATION;
+END
+
+IF NOT EXISTS (SELECT 1 FROM sys.databases WHERE name = '@DB_NAME' AND is_read_committed_snapshot_on = 1)
+BEGIN
     ALTER DATABASE [@DB_NAME] SET READ_COMMITTED_SNAPSHOT ON;
 END
 
