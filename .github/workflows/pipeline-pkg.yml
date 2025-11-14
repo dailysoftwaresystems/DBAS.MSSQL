@@ -21,7 +21,7 @@ jobs:
     - uses: actions/checkout@v4
     - name: Auto set package version from project
       run: |
-        version=$(cat VERSION)
+        version=$(cat VERSION | tr -d '\n\r' | xargs)
         echo "Building version: $version"
         echo "VERSION=$version" >> $GITHUB_ENV
     - name: Build dbas_mssql
