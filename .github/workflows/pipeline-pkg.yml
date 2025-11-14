@@ -53,7 +53,7 @@ jobs:
     - name: Tag Docker Image
       run: |
           docker tag dbas_mssql:latest ${{ github.repository_owner }}/dbas_mssql:latest
-          docker tag dbas_mssql:latest ${{ github.repository_owner }}/dbdbas_mssqlas_sqlite:${{ env.VERSION }}
+          docker tag dbas_mssql:latest ${{ github.repository_owner }}/dbas_mssql:${{ env.VERSION }}
     - name: Push Docker Image
       run: |
           docker push ${{ github.repository_owner }}/dbas_mssql:latest
