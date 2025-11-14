@@ -61,15 +61,31 @@ if ! /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -C \
         -e "s/@DB_CHANGE_TRACKING_PERIOD_DAYS/$DB_CHANGE_TRACKING_PERIOD_DAYS/g" \
         /start-up/init.sql > /start-up/final_init.sql
     
-    if ! INIT_OUTPUT=$(/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -C -i /start-up/final_init.sql -b 2>&1); then
-        echo "ERROR: Failed to execute init script"
-        echo "SQL Error Output:"
-        echo "$INIT_OUTPUT"
-        echo "Last 20 lines of SQL Server errorlog:"
-        tail -n 20 /var/opt/mssql/log/errorlog || true
-        exit 1
-    fi
-    echo "$DB_NAME initialization completed successfully"
+    # Retry logic for SQL initialization
+    MAX_RETRIES=3
+    RETRY_COUNT=0
+    while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+        RETRY_COUNT=$((RETRY_COUNT + 1))
+        echo "Attempt $RETRY_COUNT of $MAX_RETRIES: Running initialization script..."
+        
+        if INIT_OUTPUT=$(/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$SA_PASSWORD" -C -i /start-up/final_init.sql -b 2>&1); then
+            echo "$DB_NAME initialization completed successfully"
+            break
+        else
+            echo "Attempt $RETRY_COUNT failed. SQL Error Output:"
+            echo "$INIT_OUTPUT"
+            
+            if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+                echo "Retrying in 1 second..."
+                sleep 1
+            else
+                echo "ERROR: Failed to execute init script after $MAX_RETRIES attempts"
+                echo "Last 20 lines of SQL Server errorlog:"
+                tail -n 20 /var/opt/mssql/log/errorlog || true
+                exit 1
+            fi
+        fi
+    done
 fi
 
 echo "Waiting for $DB_NAME db to be up..."
