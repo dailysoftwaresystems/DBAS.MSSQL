@@ -19,7 +19,7 @@ jobs:
   build-package:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - name: Auto set package version from project
       run: |
         version=$(cat VERSION | tr -d '\n\r' | xargs)
