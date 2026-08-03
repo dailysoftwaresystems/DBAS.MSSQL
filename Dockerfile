@@ -1,4 +1,13 @@
-FROM mcr.microsoft.com/mssql/server:2025-latest
+# Pinned to 2022 deliberately. On 2025-latest, applying MSSQL_COLLATION crashes
+# sqlservr during the system-database rebuild -- a SQLPAL assert in NtumWaiter.cpp
+# -- which leaves the container hung or dead. Measured on the unmodified
+# Microsoft images with only MSSQL_COLLATION set: 2025-latest succeeded 1 of 4
+# attempts, 2022-latest 4 of 4. tempdb takes its collation from the server, and
+# the server collation can only be set by that rebuild (model is a system
+# database and cannot be altered), so the rebuild is unavoidable and has to be
+# reliable. The 2022 base is also Ubuntu 22.04, which is what the mssql-tools18
+# apt repo below targets; 2025-latest is Ubuntu 24.04 and mismatched it.
+FROM mcr.microsoft.com/mssql/server:2022-latest
 
 USER root
 

@@ -2,10 +2,10 @@
 
 [![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)](VERSION)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![SQL Server](https://img.shields.io/badge/SQL%20Server-2025-red.svg)](https://hub.docker.com/r/microsoft/mssql-server)
+[![SQL Server](https://img.shields.io/badge/SQL%20Server-2022-red.svg)](https://hub.docker.com/r/microsoft/mssql-server)
 [![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=flat&logo=docker&logoColor=white)](Dockerfile)
 
-An optimized Microsoft SQL Server 2025 Docker image for the DBAS project, featuring reliable startup and automated database configuration.
+An optimized Microsoft SQL Server 2022 Docker image for the DBAS project, featuring reliable startup and automated database configuration.
 
 ## ✨ Features
 
@@ -86,17 +86,30 @@ volumes:
 | `DB_READY_TIMEOUT` | `180` | Seconds to wait for databases to come online |
 | `SHUTDOWN_TIMEOUT` | `55` | Seconds to wait for SQL Server to stop before giving up |
 
-> **First boot with a custom `MSSQL_COLLATION` is slow and can stall.** Setting
-> `MSSQL_COLLATION` makes SQL Server rebuild its system databases, during which
-> `sa` logins fail with error 18456. This normally finishes in ~20s, but it
-> intermittently hangs for several minutes. That behaviour reproduces on the
-> unmodified `mcr.microsoft.com/mssql/server` image with only `MSSQL_COLLATION`
-> set, so it is upstream, not something this image introduces.
->
-> `LOGIN_TIMEOUT` and `DB_READY_TIMEOUT` bound the wait. If you raise them, raise
-> the `HEALTHCHECK --start-period` in the Dockerfile to match, so a slow boot is
-> not reported unhealthy while it is still legitimately starting. Using a
-> persistent volume for `/var/opt/mssql` avoids the rebuild on every start.
+### Collation and tempdb
+
+`MSSQL_COLLATION` sets the **server** collation. This matters because `tempdb`
+takes its collation from the server, so setting it is what makes `DBAS` and
+`tempdb` match — required for joining temp tables against `DBAS` tables without
+`Cannot resolve collation conflict` errors. There is no lighter-weight way to
+align `tempdb`: it inherits from `model`, and `model` is a system database that
+`ALTER DATABASE ... COLLATE` refuses to change.
+
+Applying it rebuilds the system databases. That happens **once**, when the data
+directory is first initialised — it is skipped on every later start, including
+restarts and reuse of an existing volume.
+
+> ⚠️ **Do not move this image to the `2025` base.** On `2025-latest` that rebuild
+> crashes `sqlservr` with a SQLPAL assert (`NtumWaiter.cpp`), leaving the
+> container hung or dead. Measured on the unmodified Microsoft images with only
+> `MSSQL_COLLATION` set: **2025-latest succeeded 1 of 4 starts, 2022-latest 4 of
+> 4.** This image is pinned to `2022-latest` for that reason. If you must move to
+> 2025, pre-initialise `/var/opt/mssql` once and ship/mount it, so the rebuild
+> never runs at container start.
+
+`LOGIN_TIMEOUT` and `DB_READY_TIMEOUT` bound the startup waits. If you raise
+them, raise the `HEALTHCHECK --start-period` in the Dockerfile to match, so a
+slow boot is not reported unhealthy while it is still legitimately starting.
 
 ## 🏗️ Building
 
